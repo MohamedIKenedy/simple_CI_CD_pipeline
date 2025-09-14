@@ -1,5 +1,5 @@
 pipeline {
-  agent any
+  agent { label 'linux' }
   options {
     timestamps()
     skipDefaultCheckout(false)
@@ -7,25 +7,12 @@ pipeline {
   stages {
     stage('Build') {
       steps {
-        script {
-          if (isUnix()) {
-            sh '''
-              set -euxo pipefail
-              mkdir -p logs
-              chmod +x mvnw
-              ./mvnw -B -ntp clean compile -DskipTests 2>&1 | tee logs/build.log
-            '''
-          } else {
-            bat '''
-              powershell -NoProfile -ExecutionPolicy Bypass -Command "^ 
-                $ErrorActionPreference='Stop'; ^
-                if(!(Test-Path 'logs')){ New-Item -ItemType Directory -Force -Path 'logs' | Out-Null }; ^
-                & .\\mvnw.cmd -B -ntp clean compile -DskipTests 2^>^&1 | Tee-Object -FilePath 'logs\\build.log'; ^
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ^
-              "
-            '''
-          }
-        }
+        sh '''
+          set -euxo pipefail
+          mkdir -p logs
+          chmod +x mvnw
+          ./mvnw -B -ntp clean compile -DskipTests 2>&1 | tee logs/build.log
+        '''
       }
       post {
         always {
@@ -36,22 +23,10 @@ pipeline {
 
     stage('Test') {
       steps {
-        script {
-          if (isUnix()) {
-            sh '''
-              set -euxo pipefail
-              ./mvnw -B -ntp test 2>&1 | tee logs/test.log
-            '''
-          } else {
-            bat '''
-              powershell -NoProfile -ExecutionPolicy Bypass -Command "^ 
-                $ErrorActionPreference='Stop'; ^
-                & .\\mvnw.cmd -B -ntp test 2^>^&1 | Tee-Object -FilePath 'logs\\test.log'; ^
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ^
-              "
-            '''
-          }
-        }
+        sh '''
+          set -euxo pipefail
+          ./mvnw -B -ntp test 2>&1 | tee logs/test.log
+        '''
       }
       post {
         always {
@@ -63,22 +38,10 @@ pipeline {
 
     stage('Package') {
       steps {
-        script {
-          if (isUnix()) {
-            sh '''
-              set -euxo pipefail
-              ./mvnw -B -ntp package -DskipTests=false 2>&1 | tee -a logs/build.log
-            '''
-          } else {
-            bat '''
-              powershell -NoProfile -ExecutionPolicy Bypass -Command "^ 
-                $ErrorActionPreference='Stop'; ^
-                & .\\mvnw.cmd -B -ntp package -DskipTests=false 2^>^&1 | Tee-Object -FilePath 'logs\\build.log' -Append; ^
-                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ^
-              "
-            '''
-          }
-        }
+        sh '''
+          set -euxo pipefail
+          ./mvnw -B -ntp package -DskipTests=false 2>&1 | tee -a logs/build.log
+        '''
       }
       post {
         success {
