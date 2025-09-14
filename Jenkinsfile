@@ -4,27 +4,59 @@ pipeline {
     timestamps()
     skipDefaultCheckout(false)
   }
-  environment {
-    // Optional: use a configured JDK installation from Jenkins (Manage Jenkins > Tools > JDK installations)
-    // Replace 'jdk17' with your JDK tool name, or remove if agents already provide java.
-    // JAVA_HOME = tool name: 'jdk17', type: 'jdk'
-    // Example: JAVA_HOME = tool name: 'jdk17'
-  }
   stages {
-    stage('Build & Test') {
+    stage('Build') {
       steps {
         script {
           if (isUnix()) {
-            sh 'chmod +x mvnw'
-            sh './mvnw -B -ntp clean verify'
+            sh '''
+              set -euxo pipefail
+              mkdir -p logs
+              chmod +x mvnw
+              ./mvnw -B -ntp clean compile -DskipTests 2>&1 | tee logs/build.log
+            '''
           } else {
-            bat 'mvnw.cmd -B -ntp clean verify'
+            bat '''
+              powershell -NoProfile -ExecutionPolicy Bypass -Command "^ 
+                $ErrorActionPreference='Stop'; ^
+                if(!(Test-Path 'logs')){ New-Item -ItemType Directory -Force -Path 'logs' | Out-Null }; ^
+                & .\\mvnw.cmd -B -ntp clean compile -DskipTests 2^>^&1 | Tee-Object -FilePath 'logs\\build.log'; ^
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ^
+              "
+            '''
+          }
+        }
+      }
+      post {
+        always {
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'logs/build.log', onlyIfSuccessful: false
+        }
+      }
+    }
+
+    stage('Test') {
+      steps {
+        script {
+          if (isUnix()) {
+            sh '''
+              set -euxo pipefail
+              ./mvnw -B -ntp test 2>&1 | tee logs/test.log
+            '''
+          } else {
+            bat '''
+              powershell -NoProfile -ExecutionPolicy Bypass -Command "^ 
+                $ErrorActionPreference='Stop'; ^
+                & .\\mvnw.cmd -B -ntp test 2^>^&1 | Tee-Object -FilePath 'logs\\test.log'; ^
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ^
+              "
+            '''
           }
         }
       }
       post {
         always {
           junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+          archiveArtifacts allowEmptyArchive: true, artifacts: 'logs/test.log', onlyIfSuccessful: false
         }
       }
     }
@@ -33,21 +65,31 @@ pipeline {
       steps {
         script {
           if (isUnix()) {
-            sh './mvnw -B -ntp package -DskipTests=false'
+            sh '''
+              set -euxo pipefail
+              ./mvnw -B -ntp package -DskipTests=false 2>&1 | tee -a logs/build.log
+            '''
           } else {
-            bat 'mvnw.cmd -B -ntp package -DskipTests=false'
+            bat '''
+              powershell -NoProfile -ExecutionPolicy Bypass -Command "^ 
+                $ErrorActionPreference='Stop'; ^
+                & .\\mvnw.cmd -B -ntp package -DskipTests=false 2^>^&1 | Tee-Object -FilePath 'logs\\build.log' -Append; ^
+                if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE } ^
+              "
+            '''
           }
+        }
+      }
+      post {
+        success {
+          archiveArtifacts artifacts: 'target/*.jar', fingerprint: true, onlyIfSuccessful: true
         }
       }
     }
   }
   post {
-    success {
-      archiveArtifacts artifacts: 'target/*.jar', fingerprint: true, onlyIfSuccessful: true
-      echo 'Build succeeded.'
-    }
-    failure {
-      echo 'Build failed.'
+    always {
+      archiveArtifacts allowEmptyArchive: true, artifacts: 'logs/*.log', onlyIfSuccessful: false
     }
   }
 }
